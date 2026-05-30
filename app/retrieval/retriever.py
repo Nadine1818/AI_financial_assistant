@@ -21,11 +21,11 @@ from app.vectorstore.chroma_store import (
 )
 from app.config.settings import settings
 from app.utils.logger import get_logger
-from app.utils.helpers import truncate, estimate_tokens
+from app.utils.helpers import truncate_text, estimate_tokens
 
 logger = get_logger(__name__)
 
-# ── Relevance threshold ────────────────────────────────────────────────────────
+# Relevance threshold
 # Cosine distance scores from ChromaDB: 0.0 = identical, 1.0 = unrelated.
 # Chunks with a score ABOVE this threshold are considered too weakly related
 # to be useful — including them would inject noise into the LLM's context.
@@ -75,7 +75,7 @@ def retrieve(
 
     logger.info(
         "Retrieving chunks | query: %r | top_k: %d | source: %s",
-        truncate(query, 80),
+        truncate_text(query, 80),
         k,
         source_filter or "all",
     )
@@ -109,7 +109,7 @@ def retrieve(
             "Query may be out of scope: %r",
             before,
             RELEVANCE_THRESHOLD,
-            truncate(query, 80),
+            truncate_text(query, 80),
         )
         return []
 
@@ -242,5 +242,5 @@ def _log_retrieved_chunks(docs: list[Document]) -> None:
     for i, doc in enumerate(docs):
         source = doc.metadata.get("source", "unknown")
         chunk_idx = doc.metadata.get("chunk_index", "?")
-        preview = truncate(doc.page_content.replace("\n", " "), max_chars=80)
+        preview = truncate_text(doc.page_content.replace("\n", " "), max_chars=80)
         logger.debug("  [%d] %s::chunk_%s → %r", i + 1, source, chunk_idx, preview)

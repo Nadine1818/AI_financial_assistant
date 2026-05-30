@@ -4,7 +4,7 @@
 
 import logging
 import sys
-from config.settings import settings
+from app.config.settings import settings
 
 # __name__ is the name of the module, so logs will show which module they came from. (matches file name)
 def get_logger(name: str) -> logging.Logger:

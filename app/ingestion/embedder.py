@@ -15,7 +15,7 @@ Embedding model: sentence-transformers/all-MiniLM-L6-v2
 """
 
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 from app.config.settings import settings
 from app.utils.helpers import timer, estimate_tokens

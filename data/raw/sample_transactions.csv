@@ -1,0 +1,27 @@
+Date,Description,Amount,Balance,Category
+2024-01-01,Opening Balance,0.00,5000.00,Balance
+2024-01-03,Tesco Superstore,-62.40,4937.60,Groceries
+2024-01-05,Monthly Salary,3500.00,8437.60,Income
+2024-01-07,Amazon Prime,-8.99,8428.61,Subscriptions
+2024-01-09,British Gas,-120.00,8308.61,Utilities
+2024-01-11,Tesco Superstore,-45.20,8263.41,Groceries
+2024-01-14,HSBC Mortgage,-1200.00,7063.41,Housing
+2024-01-16,Costa Coffee,-4.75,7058.66,Eating Out
+2024-01-18,Netflix,-15.99,7042.67,Subscriptions
+2024-01-20,Uber,-12.40,7030.27,Transport
+2024-01-22,Tesco Superstore,-38.90,6991.37,Groceries
+2024-01-25,Gym Membership,-40.00,6951.37,Health
+2024-01-28,EDF Energy,-95.00,6856.37,Utilities
+2024-01-30,Freelance Payment,800.00,7656.37,Income
+2024-02-01,Tesco Superstore,-71.30,7585.07,Groceries
+2024-02-03,Monthly Salary,3500.00,11085.07,Income
+2024-02-05,Amazon,-34.99,11050.08,Shopping
+2024-02-07,British Gas,-110.00,10940.08,Utilities
+2024-02-10,HSBC Mortgage,-1200.00,9740.08,Housing
+2024-02-13,Deliveroo,-22.50,9717.58,Eating Out
+2024-02-15,Tesco Superstore,-55.10,9662.48,Groceries
+2024-02-18,Spotify,-9.99,9652.49,Subscriptions
+2024-02-20,Uber,-8.60,9643.89,Transport
+2024-02-23,Gym Membership,-40.00,9603.89,Health
+2024-02-26,EDF Energy,-90.00,9513.89,Utilities
+2024-02-28,Closing Balance,0.00,9513.89,Balance
