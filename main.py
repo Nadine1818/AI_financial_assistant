@@ -42,6 +42,7 @@ from app.ingestion.loader import load_directory
 from app.ingestion.cleaner import clean_document
 from app.ingestion.chunker import chunk_documents
 from app.vectorstore.chroma_store import add_documents, collection_exists
+from app.retrieval.bm25_index import reset_bm25_index
 
 # RAG + validation, orchestrated as a corrective-retry graph
 from app.orchestration.rag_graph import run_with_history
@@ -176,6 +177,13 @@ def chat() -> None:
         if question.lower() == "reingest":
             print("── Re-ingesting documents... ──")
             ingest(force=True)
+            # BM25's index is a snapshot built once, lazily, on first use —
+            # it does NOT automatically pick up newly ingested documents the
+            # way ChromaDB's similarity_search does (that always queries
+            # live). Without this, hybrid retrieval would keep searching
+            # keyword-matches from before this reingest, silently missing
+            # anything new until the app restarts.
+            reset_bm25_index()
             print("── Done. ──\n")
             continue
 

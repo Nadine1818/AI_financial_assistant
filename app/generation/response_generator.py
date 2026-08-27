@@ -36,6 +36,7 @@ Why return a GenerationResult dataclass instead of a plain string?
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
 from app.retrieval.retriever import retrieve, retrieve_hybrid, format_context
@@ -103,6 +104,11 @@ def _extract_sources(docs: list) -> list[str]:
     Uses dict.fromkeys() to deduplicate while preserving insertion order
     (important: most-relevant source stays first).
 
+    Displays only the filename (via Path(...).name), not the full path
+    stored in metadata — this is what main.py prints as "Sources:", and a
+    full Windows/Unix path there is noisy for no benefit. Path(...).name
+    is a no-op for bare filenames, so this is safe either way.
+
     Args:
         docs: list[Document] from retriever.retrieve()
 
@@ -110,7 +116,7 @@ def _extract_sources(docs: list) -> list[str]:
         Deduplicated list of source filenames, e.g. ["statement.pdf", "q3.pdf"]
     """
     sources = [
-        doc.metadata.get("source", "unknown")
+        Path(doc.metadata.get("source", "unknown")).name
         for doc in docs
     ]
     # dict.fromkeys preserves order and removes duplicates

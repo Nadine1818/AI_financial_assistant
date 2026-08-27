@@ -13,6 +13,8 @@ This file exposes two public functions:
     retrieve_with_scores(query) → list[tuple[Document, float]]  (scored path)
 """
 
+from pathlib import Path
+
 from langchain_core.documents import Document
 
 from app.vectorstore.chroma_store import (
@@ -348,7 +350,13 @@ def format_context(docs: list[Document]) -> str:
     total_tokens = 0
 
     for doc in docs:
-        source = doc.metadata.get("source", "unknown")
+        # Display only the filename to the LLM (and, downstream, to the
+        # user) — not the full path. The full path stays in metadata for
+        # internal use (dedup IDs, source_filter matching); this is purely
+        # a display concern. Path(...).name is a no-op for bare filenames
+        # (e.g. test fixtures using "doc1.pdf" directly), so this is safe
+        # regardless of whether metadata["source"] is a full path or not.
+        source = Path(doc.metadata.get("source", "unknown")).name
         chunk_index = doc.metadata.get("chunk_index", "?")
         content = doc.page_content.strip()
 
