@@ -45,31 +45,49 @@ _ENCODE_KWARGS = {"normalize_embeddings": True}
 
 
 # ---------------------------------------------------------------------------
-# EMBEDDER SINGLETON
-# Built once at module load, reused for every embed call.
+# EMBEDDER SINGLETON (LAZY)
 # Loading a transformer model takes ~1-2 seconds and ~90MB RAM.
-# We do it once here so the first embed() call isn't slow.
+#
+# We used to build this at import time (module-level `_embedder =
+# _build_embedder()`), but that meant simply IMPORTING this file — or
+# anything downstream of it, like chroma_store.py, retriever.py, or
+# response_generator.py — triggered a real HuggingFace download. That
+# broke test collection in any environment without live internet access
+# (e.g. CI) and made importing these modules unnecessarily slow/fragile.
+#
+# Lazy singleton pattern instead: nothing loads until get_embedder() is
+# actually called. Mirrors chroma_store.py's get_vectorstore(), for the
+# same reason its docstring gives — "import-time side effects are hard
+# to reason about."
 # ---------------------------------------------------------------------------
 
-def _build_embedder() -> HuggingFaceEmbeddings:
+_embedder: HuggingFaceEmbeddings | None = None
+
+
+def get_embedder() -> HuggingFaceEmbeddings:
     """
-    Load the embedding model and return a LangChain embedder instance.
+    Return the embedding model, loading it on first call only.
+
+    Every function in this file that needs the model calls this instead
+    of referencing a module-level variable directly — so the model is
+    built exactly once, on first real use, not on import.
     """
+    global _embedder
+
+    if _embedder is not None:
+        return _embedder
+
     logger.info("Loading embedding model: %s", _EMBEDDING_MODEL)
 
     with timer("embedding model load") as t:
-        embedder = HuggingFaceEmbeddings(
+        _embedder = HuggingFaceEmbeddings(
             model_name=_EMBEDDING_MODEL,
             model_kwargs=_MODEL_KWARGS,
             encode_kwargs=_ENCODE_KWARGS,
         )
 
     logger.info("Embedding model loaded in %sms", t["elapsed_ms"])
-    return embedder
-
-
-# Module-level singleton — loaded once, reused everywhere
-_embedder = _build_embedder()
+    return _embedder
 
 def embed_documents(chunks: list[Document]) -> list[Document]:
     """
@@ -109,7 +127,7 @@ def embed_documents(chunks: list[Document]) -> list[Document]:
 
     with timer("embed batch") as t:
         # embed_documents returns list[list[float]] — one vector per text
-        vectors: list[list[float]] = _embedder.embed_documents(texts)
+        vectors: list[list[float]] = get_embedder().embed_documents(texts)
 
     logger.info(
         "Embedded %d chunk(s) in %sms | vector dimensions: %d",
@@ -151,7 +169,7 @@ def embed_query(query: str) -> list[float]:
     logger.debug("Embedding query: %r", query[:80])  # log first 80 chars only
 
     with timer("embed query") as t:
-        vector = _embedder.embed_query(query)
+        vector = get_embedder().embed_query(query)
 
     logger.debug(
         "Query embedded in %sms | dimensions: %d",
@@ -175,9 +193,10 @@ def get_embedding_dimensions() -> int:
     """
     # Embed a dummy string to get the vector shape
     # We cache this so it only runs once (the result is stored in the singleton)
-    if not hasattr(_embedder, "_cached_dimensions"):
-        dummy_vector = _embedder.embed_query("dimension check")
-        _embedder._cached_dimensions = len(dummy_vector)
-        logger.debug("Embedding dimensions: %d", _embedder._cached_dimensions)
+    embedder = get_embedder()
+    if not hasattr(embedder, "_cached_dimensions"):
+        dummy_vector = embedder.embed_query("dimension check")
+        embedder._cached_dimensions = len(dummy_vector)
+        logger.debug("Embedding dimensions: %d", embedder._cached_dimensions)
 
-    return _embedder._cached_dimensions
+    return embedder._cached_dimensions

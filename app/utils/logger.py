@@ -39,7 +39,7 @@ def get_logger(name: str) -> logging.Logger:
     # Attach the handler to this logger
     logger.addHandler(handler)
  
-    # ── Prevent propagation to root logger ────────────────────────────────────
+    # Prevent propagation to root logger 
     # Python loggers form a hierarchy: "app.ingestion.loader" → "app.ingestion"
     # → "app" → root. By default a log record bubbles up to every ancestor.
     # If the root logger also has a handler (common in notebooks/frameworks),

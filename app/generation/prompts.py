@@ -241,6 +241,60 @@ Do not attempt to answer the question from general knowledge.""",
 logger.debug("NO_CONTEXT_PROMPT registered | variables: %s", NO_CONTEXT_PROMPT.input_variables)
 
 
+# REWRITE PROMPT
+# Used by the corrective-RAG loop (app/orchestration/rag_graph.py) when
+# verifier.py returns a FAIL verdict — the answer contained claims not
+# supported by the retrieved context. Instead of giving up immediately,
+# we ask the LLM to rewrite the question into a query more likely to
+# retrieve the right documents, then retry generation.
+#
+# Variables:
+#   {question}       → the ORIGINAL user question (not a prior rewrite —
+#                       always rewrite from the original to avoid drifting
+#                       further from what the user actually asked)
+#   {failed_answer}   → the answer that failed verification
+#   {explanation}     → the guardrail LLM's explanation of why it failed
+#
+# Expected output: a single rewritten search query. Nothing else.
+
+REWRITE_PROMPT = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        """\
+You are a query rewriter for a financial document retrieval system.
+
+A previous attempt to answer a question failed fact-checking — the answer \
+contained claims not supported by the retrieved documents. Your job is to \
+rewrite the ORIGINAL question into a new search query more likely to \
+retrieve the documents actually needed to answer it correctly.
+
+Rules:
+- Output ONLY the rewritten query. No preamble, no explanation.
+- Preserve all financial specifics from the original question (dates, \
+  amounts, account names, document types).
+- Try different phrasing, more specific terms, or a narrower focus than \
+  the original — the goal is better retrieval, not a different question.
+""",
+    ),
+    (
+        "human",
+        """\
+Original question:
+{question}
+
+Previous answer (failed verification):
+{failed_answer}
+
+Why it failed:
+{explanation}
+
+Rewritten search query:""",
+    ),
+])
+
+logger.debug("REWRITE_PROMPT registered | variables: %s", REWRITE_PROMPT.input_variables)
+
+
 # PROMPT REGISTRY
 # A single dict that maps prompt names to their templates.
 # response_generator.py imports from here by name — no direct imports
@@ -255,6 +309,7 @@ PROMPT_REGISTRY: dict[str, ChatPromptTemplate] = {
     "guardrail":   GUARDRAIL_PROMPT,
     "condense":    CONDENSE_PROMPT,
     "no_context":  NO_CONTEXT_PROMPT,
+    "rewrite":     REWRITE_PROMPT,
 }
 
 

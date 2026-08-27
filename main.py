@@ -7,15 +7,18 @@ Run with:
 What this file does:
     1. Ingest documents from data/raw/ into ChromaDB  (one-time or on demand)
     2. Start an interactive conversation loop
-    3. For every question: retrieve → generate → verify
-    4. Print the safe answer + sources to the terminal
+    3. For every question: retrieve → generate → verify → (retry on FAIL)
+    4. Print the safe answer + sources + attempt count to the terminal
 
 This file contains NO business logic.
 Every step delegates to the module that owns it:
-    Ingestion  → loader, cleaner, chunker, embedder
-    Retrieval  → retriever
-    Generation → response_generator
-    Validation → verifier
+    Ingestion     → loader, cleaner, chunker, embedder
+    Retrieval     → retriever
+    Generation    → response_generator
+    Validation    → verifier
+    Orchestration → rag_graph (wires generation + validation into a
+                    corrective loop — retries with a rewritten query
+                    if verification fails, instead of giving up immediately)
 """
 
 import sys
@@ -30,9 +33,8 @@ from app.ingestion.cleaner import clean_document
 from app.ingestion.chunker import chunk_documents
 from app.vectorstore.chroma_store import add_documents, collection_exists
 
-# RAG + validation
-from app.generation.response_generator import generate_with_history
-from app.validation.verifier import verify
+# RAG + validation, orchestrated as a corrective-retry graph
+from app.orchestration.rag_graph import run_with_history
 
 logger = get_logger(__name__)
 
@@ -116,8 +118,11 @@ def chat() -> None:
     """
     Run an interactive terminal conversation loop.
 
-    Maintains chat_history so multi-turn follow-up questions work
-    via generate_with_history() and CONDENSE_PROMPT.
+    Maintains chat_history so multi-turn follow-up questions work via
+    rag_graph.run_with_history(), which internally: condenses the
+    follow-up (CONDENSE_PROMPT) → generates → verifies → automatically
+    rewrites and retries if verification fails (up to MAX_RETRIES times)
+    before falling back to a safe refusal.
 
     Commands:
         'quit' or 'exit'  → end the session
@@ -133,7 +138,7 @@ def chat() -> None:
     print("=" * 60 + "\n")
 
     # chat_history holds (human_message, ai_message) tuples — oldest first.
-    # Passed to generate_with_history() on every turn.
+    # Passed to run_with_history() on every turn.
     chat_history: list[tuple[str, str]] = []
 
     while True:
@@ -164,47 +169,34 @@ def chat() -> None:
             print("── Done. ──\n")
             continue
 
-        # Generate response with RAG + history
+        # Generate + verify, with automatic corrective retries on FAIL 
         try:
-            gen_result = generate_with_history(
+            ver_result = run_with_history(
                 question=question,
                 chat_history=chat_history,
             )
         except Exception as exc:
-            logger.error("Generation failed: %s", exc)
+            logger.error("Generation/verification failed: %s", exc)
             print(f"\nAssistant: Sorry, something went wrong: {exc}\n")
             continue
 
-        # Verify 
-        try:
-            ver_result = verify(gen_result)
-        except Exception as exc:
-            logger.error("Verification failed: %s", exc)
-            # Verification failure is non-fatal — show the unverified answer
-            # with a warning rather than crashing the session.
-            ver_result = None
+        # Print answer + sources + verdict + how many attempts it took
+        attempts = ver_result.metadata.get("graph_attempts", 1)
 
-        # Print answer + sources + verdict
-        if ver_result:
-            answer  = ver_result.safe_answer
-            sources = ver_result.sources
-            verdict = ver_result.verdict
-        else:
-            answer  = gen_result.answer
-            sources = gen_result.sources
-            verdict = "UNVERIFIED"
+        print(f"\nAssistant: {ver_result.safe_answer}")
 
-        print(f"\nAssistant: {answer}")
+        if ver_result.sources:
+            print(f"\n  Sources : {', '.join(ver_result.sources)}")
 
-        if sources:
-            print(f"\n  Sources : {', '.join(sources)}")
-
-        print(f"  Verdict : {verdict}\n")
+        print(f"  Verdict : {ver_result.verdict}")
+        if attempts > 1:
+            print(f"  (took {attempts} attempts — retried after failed verification)")
+        print()
 
         # Update history 
         # Store the original question (not the condensed one) so the history
         # reads naturally when shown back to the user or the condense LLM.
-        chat_history.append((question, answer))
+        chat_history.append((question, ver_result.safe_answer))
 
 
 # ENTRY POINT 

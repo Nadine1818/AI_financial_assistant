@@ -5,6 +5,7 @@ langchain
 langchain-core
 langchain-community
 langchain-openai
+langgraph
 chromadb
 sentence-transformers
 pdfplumber

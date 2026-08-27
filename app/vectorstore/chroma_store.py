@@ -19,14 +19,14 @@ What this file does:
 Design:
     - One singleton vectorstore instance, built lazily on first call
     - All config (path, collection name) comes from settings.py
-    - embedder._embedder is passed in so Chroma can embed queries internally
+    - embedder.get_embedder() is passed in so Chroma can embed queries internally
 """
 
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 
 from app.config.settings import settings
-from app.ingestion.embedder import _embedder
+from app.ingestion.embedder import get_embedder
 from app.utils.helpers import timer
 from app.utils.logger import get_logger
 
@@ -76,7 +76,7 @@ def get_vectorstore() -> Chroma:
     with timer("chroma connect") as t:
         _vectorstore = Chroma(
             collection_name=settings.CHROMA_COLLECTION_NAME,
-            embedding_function=_embedder,   # used to embed queries at search time
+            embedding_function=get_embedder(),   # used to embed queries at search time
             persist_directory=str(settings.CHROMA_PATH),
         )
 
@@ -141,7 +141,7 @@ def similarity_search(
         user question → embed → similarity_search → top chunks → LLM
 
     How it works:
-        1. Embeds the query string using _embedder (same model as ingestion)
+        1. Embeds the query string using get_embedder() (same model as ingestion)
         2. Computes cosine similarity between query vector and all stored vectors
         3. Returns the top_k closest matches as Document objects
     """
