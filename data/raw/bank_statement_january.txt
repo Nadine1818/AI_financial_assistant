@@ -1,0 +1,37 @@
+Monthly Account Statement — Personal Checking
+Account Holder: Sample User
+Account Number: 4471-8823-0192
+Statement Period: January 1, 2026 – January 31, 2026
+
+Account Summary
+
+Opening balance on January 1, 2026 was £3,214.50. During the month, total
+deposits came to £4,800.00, primarily from salary payments and one transfer
+from a savings account. Total withdrawals and payments for the month came
+to £3,940.75. The closing balance on January 31, 2026 was £4,073.75.
+
+Notable Transactions
+
+On January 3, a salary payment of £2,400.00 was received from Meridian
+Consulting Ltd, reference SAL-2026-0103. On January 12, a transfer of
+£2,400.00 was made from the linked savings account ending in 7765 to cover
+a larger-than-usual rent payment. Rent of £1,450.00 was paid on January 14
+to Northgate Property Management, reference RENT-JAN-26.
+
+Grocery spending across the month totalled £412.30 across eleven separate
+transactions at three different supermarkets. Dining and takeaway spending
+came to £186.40. A single large purchase of £389.99 was made on January 22
+at an electronics retailer for a replacement laptop charger and peripheral
+equipment.
+
+Utility payments processed this month included an electricity bill of
+£94.20 (reference UTIL-ELEC-0119) and a broadband bill of £42.00 (reference
+UTIL-NET-0122), both paid via direct debit on their usual dates.
+
+Fees and Charges
+
+No overdraft fees were charged this month. A foreign transaction fee of
+£3.15 was applied on January 8 for a purchase made while account holder was
+traveling abroad.
+
+End of Statement.

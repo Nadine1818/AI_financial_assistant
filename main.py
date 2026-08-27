@@ -23,6 +23,16 @@ Every step delegates to the module that owns it:
 
 import sys
 
+from dotenv import load_dotenv
+
+# Load .env into the actual OS environment (os.environ) BEFORE anything
+# else runs. This is separate from settings.py's pydantic-settings loading:
+# pydantic-settings reads .env into the `settings` object only — it does
+# NOT populate os.environ. But _check_env() below (via require_env_vars())
+# checks os.environ directly, so without this call it would fail even
+# when .env is correct and settings.OPENAI_API_KEY is already populated.
+load_dotenv()
+
 from app.config.settings import settings
 from app.utils.logger import get_logger
 from app.utils.helpers import require_env_vars

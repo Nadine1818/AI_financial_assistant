@@ -16,6 +16,18 @@ class Settings(BaseSettings):
     # llm model to use
     LLM_MODEL: str = Field(default="gpt-4o-mini", description="OpenAI model name")
 
+    # Optional: point at a different OpenAI-COMPATIBLE API instead of
+    # OpenAI itself — e.g. Groq's free tier (https://api.groq.com/openai/v1).
+    # Leave unset (None) to use OpenAI directly, unchanged from before.
+    # When set, OPENAI_API_KEY should hold that provider's key instead —
+    # the field name stays OPENAI_API_KEY either way since ChatOpenAI's
+    # api_key parameter is what actually gets sent as the bearer token,
+    # regardless of which provider is on the other end of base_url.
+    LLM_BASE_URL: str | None = Field(
+        default=None,
+        description="Custom base URL for an OpenAI-compatible API (e.g. Groq). None = use OpenAI directly.",
+    )
+
     # MAX_TOKENS for the LLM response
     LLM_MAX_TOKENS: int = Field(default=1024, description="Max tokens in LLM response")
 
@@ -47,6 +59,16 @@ class Settings(BaseSettings):
     # retrieval settings for the RAG pipeline
     RETRIEVAL_TOP_K: int = Field(default=5, description="Number of chunks to retrieve")
 
+    # If True, response_generator.generate() uses hybrid (dense + BM25)
+    # retrieval instead of dense-only semantic search. Defaults to False
+    # so existing behavior is unchanged until explicitly opted into via
+    # .env — flip this once you've compared retrieve() vs retrieve_hybrid()
+    # on your own documents and are happy with the results.
+    USE_HYBRID_RETRIEVAL: bool = Field(
+        default=False,
+        description="Use hybrid (dense+BM25) retrieval instead of dense-only",
+    )
+
     # Data paths 
     RAW_DATA_DIR: Path = Field(
         default=ROOT_DIR / "data" / "raw",
@@ -69,4 +91,3 @@ class Settings(BaseSettings):
 
 # singleton pattern for settings - ensures we only load and parse environment variables once, only one instance of Settings is created and shared across the app.
 settings = Settings()
-    

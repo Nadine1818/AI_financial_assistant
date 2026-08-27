@@ -38,7 +38,7 @@ Why return a GenerationResult dataclass instead of a plain string?
 from dataclasses import dataclass, field
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
-from app.retrieval.retriever import retrieve, format_context
+from app.retrieval.retriever import retrieve, retrieve_hybrid, format_context
 from app.generation.prompts import get_prompt
 from app.generation.llm import invoke
 from app.config.settings import settings
@@ -165,12 +165,25 @@ def generate(
     )
 
     # Step 1: Retrieve relevant chunks for the question
+    # Uses hybrid (dense + BM25) retrieval if settings.USE_HYBRID_RETRIEVAL
+    # is True, otherwise the original dense-only path. Defaults to dense-
+    # only (False) so this is an explicit opt-in, not a silent behavior
+    # change — see app/retrieval/retriever.py for what each does
+    # differently (retrieve_hybrid() does NOT apply RELEVANCE_THRESHOLD;
+    # see that file's docstring for why).
     with timer("retrieval") as t_retrieve:
-        docs = retrieve(
-            query=question,
-            top_k=top_k,
-            source_filter=source_filter,
-        )
+        if settings.USE_HYBRID_RETRIEVAL:
+            docs = retrieve_hybrid(
+                query=question,
+                top_k=top_k,
+                source_filter=source_filter,
+            )
+        else:
+            docs = retrieve(
+                query=question,
+                top_k=top_k,
+                source_filter=source_filter,
+            )
 
     logger.info(
         "Retrieval complete | %d chunk(s) retrieved | elapsed=%sms",

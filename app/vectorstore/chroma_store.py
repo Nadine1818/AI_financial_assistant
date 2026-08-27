@@ -78,6 +78,17 @@ def get_vectorstore() -> Chroma:
             collection_name=settings.CHROMA_COLLECTION_NAME,
             embedding_function=get_embedder(),   # used to embed queries at search time
             persist_directory=str(settings.CHROMA_PATH),
+            # Explicitly request cosine distance. Without this, ChromaDB
+            # defaults to squared L2 (Euclidean) distance instead — which
+            # doesn't match RELEVANCE_THRESHOLD or any of the "0=identical,
+            # 1=unrelated" comments throughout this codebase. On squared L2,
+            # even strongly related chunks commonly score 1.0-2.0+, so a
+            # threshold of 0.45 silently rejected nearly everything. This
+            # only takes effect for a NEWLY CREATED collection — an existing
+            # collection on disk keeps whatever metric it was originally
+            # built with, so switching this requires deleting and
+            # re-ingesting (see delete_collection() below).
+            collection_metadata={"hnsw:space": "cosine"},
         )
 
     logger.info("ChromaDB ready in %sms", t["elapsed_ms"])
@@ -229,6 +240,70 @@ def similarity_search_with_scores(
     )
 
     return results
+
+
+def collection_exists() -> bool:
+    """
+    Check whether the ChromaDB collection already has documents stored.
+
+    Used by main.py's ingest() to decide whether to skip re-ingestion:
+        if collection_exists() and not force:
+            skip  # avoid re-embedding the same documents every run
+
+    Returns:
+        True if the collection exists on disk AND contains at least one
+        document. False if the persistence directory doesn't exist yet,
+        or exists but is empty (e.g. get_vectorstore() was called once
+        but add_documents() never was).
+    """
+    if not settings.CHROMA_PATH.exists():
+        return False
+
+    try:
+        vs = get_vectorstore()
+        count = vs._collection.count()
+        logger.debug("collection_exists() | count=%d", count)
+        return count > 0
+    except Exception as exc:
+        # If anything goes wrong reading the collection, treat it as
+        # "doesn't exist" rather than crashing — ingest() will just
+        # (re)create it, which is the safe default.
+        logger.warning("collection_exists() check failed, assuming False: %s", exc)
+        return False
+
+
+def get_all_documents() -> list[Document]:
+    """
+    Fetch every chunk currently stored in the ChromaDB collection.
+
+    Used by the BM25 index builder (app/retrieval/bm25_index.py) to build
+    a keyword-search index over the SAME corpus the dense vectorstore
+    already holds, so hybrid retrieval searches identical documents both
+    ways rather than two different snapshots.
+
+    Returns:
+        list[Document] — page_content + metadata for every stored chunk.
+        Deliberately does NOT request embeddings back from Chroma (not
+        needed for BM25, and skipping them avoids hauling potentially
+        large vectors into memory for no reason).
+    """
+    vs = get_vectorstore()
+
+    with timer("chroma get_all") as t:
+        raw = vs._collection.get(include=["documents", "metadatas"])
+
+    docs = [
+        Document(page_content=text, metadata=meta or {})
+        for text, meta in zip(raw["documents"], raw["metadatas"])
+    ]
+
+    logger.info(
+        "Fetched %d document(s) from ChromaDB in %sms",
+        len(docs),
+        t["elapsed_ms"],
+    )
+
+    return docs
 
 
 def get_collection_stats() -> dict:

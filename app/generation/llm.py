@@ -62,13 +62,18 @@ _llm = ChatOpenAI(
     temperature=settings.LLM_TEMPERATURE,
     max_tokens=settings.LLM_MAX_TOKENS,
     api_key=settings.OPENAI_API_KEY,
+    # base_url=None (the default) means "use OpenAI directly" — unchanged
+    # from before. Set LLM_BASE_URL in .env to point at any OpenAI-
+    # compatible endpoint instead, e.g. Groq's free tier.
+    base_url=settings.LLM_BASE_URL,
 )
 
 logger.debug(
-    "LLM client initialised | model=%s | temperature=%.1f | max_tokens=%d",
+    "LLM client initialised | model=%s | temperature=%.1f | max_tokens=%d | base_url=%s",
     settings.LLM_MODEL,
     settings.LLM_TEMPERATURE,
     settings.LLM_MAX_TOKENS,
+    settings.LLM_BASE_URL or "https://api.openai.com/v1 (default)",
 )
 
 

@@ -19,6 +19,7 @@ from app.vectorstore.chroma_store import (
     similarity_search,
     similarity_search_with_scores,
 )
+from app.retrieval.bm25_index import get_bm25_retriever
 from app.config.settings import settings
 from app.utils.logger import get_logger
 from app.utils.helpers import truncate_text, estimate_tokens
@@ -171,6 +172,148 @@ def retrieve_with_scores(
     )
 
     return filtered
+
+
+# HYBRID RETRIEVAL (dense + BM25, fused with Reciprocal Rank Fusion)
+#
+# retrieve() above is pure dense/semantic search — strong at matching
+# MEANING, weak at matching exact terms (account numbers, specific
+# dates, ticker symbols, precise figures). retrieve_hybrid() adds BM25
+# keyword search alongside it and fuses the two rankings, catching
+# queries that semantic search alone would miss.
+#
+# This is fully additive: retrieve() is untouched above, so any existing
+# caller (and every test that already covers it) keeps working exactly
+# as before. Callers opt into hybrid search explicitly by calling
+# retrieve_hybrid() instead.
+
+# Standard constant for Reciprocal Rank Fusion (RRF). Not tuned per
+# project — 60 is the widely-used default from the original RRF paper
+# and from most production hybrid-search implementations. It dampens
+# the score gap between e.g. rank 1 and rank 2, so one retriever's #1
+# result doesn't automatically dominate the fused ranking.
+RRF_K = 60
+
+
+def _doc_key(doc: Document) -> str:
+    """
+    Build a stable identifier for a chunk, used to match up dense and
+    BM25 results that refer to the SAME chunk during fusion.
+
+    Mirrors the deterministic ID format chroma_store.add_documents()
+    already uses ("source.pdf::chunk_3"), so both retrieval paths agree
+    on chunk identity without needing a database lookup.
+    """
+    source = doc.metadata.get("source", "unknown")
+    chunk_index = doc.metadata.get("chunk_index", "?")
+    return f"{source}::chunk_{chunk_index}"
+
+
+def retrieve_hybrid(
+    query: str,
+    top_k: int | None = None,
+    source_filter: str | None = None,
+    dense_candidates: int = 20,
+    keyword_candidates: int = 20,
+) -> list[Document]:
+    """
+    Hybrid retrieval: combine dense (semantic) and BM25 (keyword) search
+    via Reciprocal Rank Fusion, instead of relying on semantic similarity
+    alone.
+
+    Why RRF instead of combining raw scores directly?
+        Cosine distance (dense) and BM25 relevance scores live on
+        completely different, incompatible scales — there's no
+        principled way to add "0.3 cosine distance" to "8.4 BM25 score".
+        RRF sidesteps this entirely by only looking at RANK POSITION in
+        each result list, not the raw scores:
+
+            score(doc) = Σ over retrievers of  1 / (RRF_K + rank)
+
+        A document ranked highly by either method scores well, and a
+        document found by BOTH methods scores best of all.
+
+    Args:
+        query:              The user's question, exactly as typed.
+        top_k:              How many final results to return after
+                             fusion. Defaults to settings.RETRIEVAL_TOP_K.
+        source_filter:      Optional filename to restrict DENSE search
+                             to. Note: BM25 here always searches the
+                             whole collection — LangChain's BM25Retriever
+                             doesn't support ChromaDB-style per-query
+                             metadata filtering.
+        dense_candidates:   How many candidates to pull from semantic
+                             search before fusion — wider than top_k so
+                             fusion has real material to work with.
+        keyword_candidates: Same, for BM25.
+
+    Returns:
+        list[Document] — top_k chunks after RRF fusion, best first.
+        Unlike retrieve(), this does NOT apply RELEVANCE_THRESHOLD —
+        RRF's rank-based scoring isn't on the same scale as cosine
+        distance, so that threshold doesn't transfer. The top_k cutoff
+        itself is the relevance gate here.
+
+    Raises:
+        ValueError: If query is empty, or if the BM25 index can't be
+                    built (empty collection — see bm25_index.py).
+    """
+    if not query or not query.strip():
+        raise ValueError("Query string cannot be empty.")
+
+    k = top_k or settings.RETRIEVAL_TOP_K
+    chroma_filter = {"source": source_filter} if source_filter else None
+
+    logger.info(
+        "Hybrid retrieval starting | query: %r | top_k: %d",
+        truncate_text(query, 80),
+        k,
+    )
+
+    # Dense candidates — reuse the existing scored search, just with a
+    # wider net (dense_candidates) than the final top_k.
+    dense_results = similarity_search_with_scores(
+        query=query,
+        top_k=dense_candidates,
+        filter=chroma_filter,
+    )
+    dense_docs = [doc for doc, _ in dense_results]
+
+    # Keyword candidates
+    bm25 = get_bm25_retriever()
+    bm25.k = keyword_candidates
+    bm25_docs = bm25.invoke(query)
+
+    # Reciprocal Rank Fusion 
+    # Every doc's fused score is the sum of 1/(RRF_K + rank) across
+    # whichever retriever(s) it appeared in. Rank is 0-indexed internally
+    # but we use rank+1 so the top result contributes 1/(RRF_K+1), never
+    # a division that favours rank 0 disproportionately.
+    scores: dict[str, float] = {}
+    doc_lookup: dict[str, Document] = {}
+
+    for rank, doc in enumerate(dense_docs):
+        key = _doc_key(doc)
+        scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank + 1)
+        doc_lookup[key] = doc
+
+    for rank, doc in enumerate(bm25_docs):
+        key = _doc_key(doc)
+        scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank + 1)
+        doc_lookup.setdefault(key, doc)  # keep dense version if both found it
+
+    ranked_keys = sorted(scores, key=lambda kk: scores[kk], reverse=True)
+    fused = [doc_lookup[kk] for kk in ranked_keys[:k]]
+
+    logger.info(
+        "Hybrid retrieval complete | dense=%d | bm25=%d | %d unique candidate(s) → top %d returned",
+        len(dense_docs),
+        len(bm25_docs),
+        len(scores),
+        len(fused),
+    )
+
+    return fused
 
 
 def format_context(docs: list[Document]) -> str:
